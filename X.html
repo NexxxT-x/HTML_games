@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <title>Complex MMORPG Farm</title>
+    <style>
+        :root {
+            --primary: #4CAF50;
+            --secondary: #FFC107;
+        }
+
+        body {
+            font-family: 'Arial', sans-serif;
+            background: #2c3e50;
+            color: white;
+            display: grid;
+            grid-template-columns: 300px 1fr;
+            gap: 20px;
+            min-height: 100vh;
+            margin: 0;
+            padding: 20px;
+        }
+
+        .sidebar {
+            background: #34495e;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 0 15px rgba(0,0,0,0.3);
+        }
+
+        .main-content {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px;
+        }
+
+        .farm-plot {
+            background: #8B4513;
+            border: 3px solid #654321;
+            border-radius: 8px;
+            aspect-ratio: 1;
+            position: relative;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+
+        .farm-plot:hover {
+            transform: scale(1.05);
+        }
+
+        .progress-bar {
+            height: 8px;
+            background: #555;
+            border-radius: 4px;
+            overflow: hidden;
+            position: absolute;
+            bottom: 0;
+            width: 100%;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: var(--primary);
+            width: 0%;
+            transition: width 0.3s;
+        }
+
+        .crafting-panel {
+            background: #2ecc71;
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 20px;
+        }
+
+        .inventory-item {
+            display: flex;
+            align-items: center;
+            padding: 10px;
+            background: #3498db;
+            margin: 5px 0;
+            border-radius: 5px;
+        }
+
+        .skill-tree {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px;
+            margin-top: 20px;
+        }
+
+        .skill-node {
+            background: #e67e22;
+            padding: 10px;
+            text-align: center;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+
+        .modal {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: #34495e;
+            padding: 20px;
+            border-radius: 10px;
+            z-index: 1000;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="sidebar">
+        <h2>Spieler Stats</h2>
+        <div id="player-stats">
+            <p>Level: <span id="level">1</span></p>
+            <p>XP: <span id="xp">0</span>/<span id="xp-needed">100</span></p>
+            <p>Energie: <span id="energy">100</span></p>
+        </div>
+
+        <h2>Fertigkeiten</h2>
+        <div class="skill-tree">
+            <div class="skill-node" onclick="upgradeSkill('farming')">🌱 Farming</div>
+            <div class="skill-node" onclick="upgradeSkill('crafting')">⚒️ Crafting</div>
+            <div class="skill-node" onclick="upgradeSkill('mining')">⛏️ Mining</div>
+        </div>
+
+        <h2>Inventar</h2>
+        <div id="inventory"></div>
+    </div>
+
+    <div class="main-content" id="farm-grid"></div>
+
+    <div class="modal" id="crafting-modal">
+        <h3>Crafting Rezepte</h3>
+        <div id="recipes"></div>
+        <button onclick="hideModal()">Schließen</button>
+    </div>
+
+    <script>
+        class GameState {
+            constructor() {
+                this.level = 1;
+                this.xp = 0;
+                this.energy = 100;
+                this.skills = {
+                    farming: 1,
+                    crafting: 1,
+                    mining: 1
+                };
+                this.inventory = {
+                    resources: {
+                        wood: 0,
+                        stone: 0,
+                        iron: 0,
+                        wheat: 0,
+                        carrot: 0
+                    },
+                    items: []
+                };
+                this.plots = Array(16).fill().map((_, i) => ({
+                    id: i,
+                    crop: null,
+                    progress: 0,
+                    growthTime: 0
+                }));
+                this.craftingRecipes = {
+                    'Holz Hacke': { wood: 5, stone: 2 },
+                    'Eisen Schwert': { iron: 3, wood: 2 },
+                    'Brot': { wheat: 3 }
+                };
+            }
+        }
+
+        let game = loadGame();
+
+        function loadGame() {
+            const saved = localStorage.getItem('farmGame');
+            return saved ? Object.assign(new GameState(), JSON.parse(saved)) : new GameState();
+        }
+
+        function saveGame() {
+            localStorage.setItem('farmGame', JSON.stringify(game));
+        }
+
+        function render() {
+            // Spieler Stats
+            document.getElementById('level').textContent = game.level;
+            document.getElementById('xp').textContent = game.xp;
+            document.getElementById('xp-needed').textContent = neededXP();
+            document.getElementById('energy').textContent = game.energy;
+
+            // Farm Plots
+            const farmGrid = document.getElementById('farm-grid');
+            farmGrid.innerHTML = '';
+            game.plots.forEach(plot => {
+                const plotEl = document.createElement('div');
+                plotEl.className = 'farm-plot';
+                plotEl.innerHTML = `
+                    ${plot.crop ? `
+                        <div style="font-size: 40px; text-align: center">
+                            ${getCropIcon(plot.crop)}
+                        </div>
+                        <div class="progress-bar">
+                            <div class="progress-fill" style="width: ${(plot.progress / plot.growthTime) * 100}%"></div>
+                        </div>
+                    ` : '+'}
+                `;
+                plotEl.onclick = () => handlePlotClick(plot.id);
+                farmGrid.appendChild(plotEl);
+            });
+
+            // Inventar
+            const inventory = document.getElementById('inventory');
+            inventory.innerHTML = Object.entries(game.inventory.resources)
+                .map(([item, count]) => `
+                    <div class="inventory-item">
+                        <span style="flex:1">${item}</span>
+                        <span>${count}</span>
+                    </div>
+                `).join('');
+        }
+
+        function handlePlotClick(plotId) {
+            const plot = game.plots[plotId];
+            if (!plot.crop) {
+                plantCrop(plotId, 'carrot');
+            } else if (plot.progress >= plot.growthTime) {
+                harvestCrop(plotId);
+            }
+        }
+
+        function plantCrop(plotId, cropType) {
+            const plot = game.plots[plotId];
+            plot.crop = cropType;
+            plot.growthTime = 5000 / game.skills.farming;
+            plot.progress = 0;
+            
+            const growthInterval = setInterval(() => {
+                plot.progress += 100;
+                if (plot.progress >= plot.growthTime) {
+                    clearInterval(growthInterval);
+                }
+                render();
+            }, 100);
+            
+            game.energy -= 10;
+            render();
+            saveGame();
+        }
+
+        function harvestCrop(plotId) {
+            const plot = game.plots[plotId];
+            game.inventory.resources[plot.crop] += 1 * game.skills.farming;
+            addXP(50);
+            plot.crop = null;
+            render();
+            saveGame();
+        }
+
+        function addXP(amount) {
+            game.xp += amount;
+            if (game.xp >= neededXP()) {
+                game.level++;
+                game.xp = 0;
+                game.energy = 100;
+            }
+        }
+
+        function neededXP() {
+            return Math.pow(game.level, 2) * 100;
+        }
+
+        function showCrafting() {
+            document.getElementById('crafting-modal').style.display = 'block';
+            const recipes = document.getElementById('recipes');
+            recipes.innerHTML = Object.entries(game.craftingRecipes)
+                .map(([item, requirements]) => `
+                    <div class="recipe">
+                        <h4>${item}</h4>
+                        ${Object.entries(requirements).map(([mat, qty]) => `
+                            <div>${mat}: ${qty}</div>
+                        `).join('')}
+                        <button onclick="craftItem('${item}')">Craften</button>
+                    </div>
+                `).join('');
+        }
+
+        function craftItem(item) {
+            const recipe = game.craftingRecipes[item];
+            if (Object.entries(recipe).every(([mat, qty]) => 
+                game.inventory.resources[mat] >= qty
+            )) {
+                Object.entries(recipe).forEach(([mat, qty]) => {
+                    game.inventory.resources[mat] -= qty;
+                });
+                game.inventory.items.push(item);
+                addXP(100);
+                saveGame();
+                render();
+            }
+        }
+
+        function getCropIcon(crop) {
+            const icons = {
+                carrot: '🥕',
+                wheat: '🌾',
+                // Weitere Icons hier
+            };
+            return icons[crop] || '🌱';
+        }
+
+        function upgradeSkill(skill) {
+            if (game.level > game.skills[skill]) {
+                game.skills[skill]++;
+                saveGame();
+                render();
+            }
+        }
+
+        // Initialisierung
+        render();
+        setInterval(() => {
+            if (game.energy < 100) {
+                game.energy += 0.1;
+                render();
+                saveGame();
+            }
+        }, 1000);
+    </script>
+</body>
+</html>
