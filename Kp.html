@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Mobile RPG</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            touch-action: none;
+        }
+        
+        #gameCanvas {
+            width: 100%;
+            height: 100vh;
+            background: #000;
+        }
+
+        .virtual-joystick {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            width: 120px;
+            height: 120px;
+            background: rgba(255,255,255,0.2);
+            border-radius: 50%;
+        }
+
+        .action-buttons {
+            position: fixed;
+            bottom: 30px;
+            right: 20px;
+            gap: 15px;
+            display: flex;
+        }
+
+        .action-button {
+            width: 60px;
+            height: 60px;
+            background: #ff4444;
+            border-radius: 50%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            color: white;
+            font-size: 24px;
+            touch-action: manipulation;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="gameCanvas"></canvas>
+    
+    <!-- Touch Controls -->
+    <div class="virtual-joystick" id="joystick"></div>
+    <div class="action-buttons">
+        <div class="action-button" id="attackBtn">⚔️</div>
+        <div class="action-button" id="skillBtn">✨</div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        
+        // Mobile Anpassungen
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        // Game State
+        const gameState = {
+            player: {
+                x: canvas.width/2,
+                y: canvas.height/2,
+                level: 1,
+                exp: 0,
+                stats: { /*...*/ },
+                animation: 'idle',
+                direction: 'down'
+            },
+            currentWorld: 'forest',
+            worlds: {
+                forest: { 
+                    background: '#2d5a27',
+                    enemies: ['slime', 'goblin'],
+                    portals: [{x: 100, y: 100, target: 'dungeon'}]
+                },
+                dungeon: { /*...*/ }
+            },
+            players: new Map() // Für Multiplayer
+        };
+
+        // Touch Controls
+        let touchStartX = 0;
+        let touchStartY = 0;
+        let isMoving = false;
+
+        document.addEventListener('touchstart', (e) => {
+            touchStartX = e.touches[0].clientX;
+            touchStartY = e.touches[0].clientY;
+            isMoving = true;
+        });
+
+        document.addEventListener('touchmove', (e) => {
+            if (!isMoving) return;
+            
+            const deltaX = e.touches[0].clientX - touchStartX;
+            const deltaY = e.touches[0].clientY - touchStartY;
+            
+            gameState.player.x += deltaX * 0.5;
+            gameState.player.y += deltaY * 0.5;
+            
+            touchStartX = e.touches[0].clientX;
+            touchStartY = e.touches[0].clientY;
+        });
+
+        document.addEventListener('touchend', () => {
+            isMoving = false;
+        });
+
+        // Combat System
+        class Enemy {
+            constructor(type) {
+                this.health = 50;
+                this.attack = 10;
+                this.exp = 20;
+            }
+        }
+
+        function spawnEnemies() {
+            setInterval(() => {
+                if(gameState.worlds[gameState.currentWorld].enemies.length < 5) {
+                    const enemy = new Enemy();
+                    enemy.x = Math.random() * canvas.width;
+                    enemy.y = Math.random() * canvas.height;
+                    gameState.worlds[gameState.currentWorld].enemies.push(enemy);
+                }
+            }, 5000);
+        }
+
+        // Multiplayer mit WebSocket
+        const socket = new WebSocket('wss://your-game-server.com/ws');
+        
+        socket.onmessage = (event) => {
+            const data = JSON.parse(event.data);
+            
+            switch(data.type) {
+                case 'playerUpdate':
+                    gameState.players.set(data.id, data);
+                    break;
+                case 'combat':
+                    handleCombat(data);
+                    break;
+            }
+        };
+
+        function sendUpdate() {
+            socket.send(JSON.stringify({
+                type: 'playerUpdate',
+                id: getPlayerId(),
+                position: {x: gameState.player.x, y: gameState.player.y},
+                stats: gameState.player.stats
+            }));
+        }
+
+        // Animation System
+        const spritesheets = {
+            player: {
+                idle: loadSprite('player_idle.png'),
+                walk: loadSprite('player_walk.png')
+            }
+        };
+
+        function loadSprite(url) {
+            const img = new Image();
+            img.src = url;
+            return img;
+        }
+
+        let lastFrame = 0;
+        function animate(timestamp) {
+            const delta = timestamp - lastFrame;
+            // Animationslogik hier
+            requestAnimationFrame(animate);
+        }
+
+        // Game Loop
+        function gameLoop() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            // Zeichne Welt
+            ctx.fillStyle = gameState.worlds[gameState.currentWorld].background;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            // Zeichne Spieler
+            drawSprite(
+                spritesheets.player[gameState.player.animation],
+                gameState.player.x,
+                gameState.player.y
+            );
+            
+            requestAnimationFrame(gameLoop);
+        }
+
+        // Start
+        spawnEnemies();
+        gameLoop();
+        animate(0);
+
+        // Responsive GUI
+        function updateMobileGUI() {
+            // Angepasste UI-Elemente für kleine Bildschirme
+        }
+    </script>
+</body>
+</html>
