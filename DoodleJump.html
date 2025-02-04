@@ -197,6 +197,24 @@ function loop() {
   })
 }
 
+
+
+touchsquare.addEventListener ("touch", function (eve) {
+	eve.preventDefault();
+	const  dim = touchsquare.getBoundingClientRect();
+	const  posx = event.clientX - dim.left;
+	const  posy = event.clientY - dim.top;
+		
+	circle.setAttribute("cx",posx);
+	circle.setAttribute("cy",posy);
+	document.querySelector(".conso").innerHTML =  `${posx} ${posy}  <br> ${dim.left}  ${dim.top}`;
+});
+
+
+  
+
+
+  
 // listen to keyboard events to move doodle
 document.addEventListener('keydown', function(e) {
   // left arrow key
